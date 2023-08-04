@@ -3,6 +3,7 @@ package com.example.finalprojectgigih
 import android.annotation.SuppressLint
 import android.app.SearchManager
 import android.content.ContentValues.TAG
+import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -14,6 +15,7 @@ import android.view.View
 import android.widget.CursorAdapter
 import androidx.cursoradapter.widget.SimpleCursorAdapter
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
@@ -45,6 +47,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding = inflate(layoutInflater)
         val view = binding.root
         setContentView(view)
+        val sharedPreferences = getSharedPreferences("nightMode", Context.MODE_PRIVATE)
+        val savedNightMode = sharedPreferences.getBoolean("nightModeState",false)
         listDisaster = ArrayList()
         setupSearchView()
         initiateBottomSheet()
@@ -358,5 +362,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
         return view.isSelected
     }
+
+
 
 }
