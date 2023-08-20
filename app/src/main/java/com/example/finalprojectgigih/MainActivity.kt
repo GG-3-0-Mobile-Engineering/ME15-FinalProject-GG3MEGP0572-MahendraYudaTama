@@ -1,28 +1,43 @@
 package com.example.finalprojectgigih
 
 import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.SearchManager
 import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.database.MatrixCursor
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.provider.BaseColumns
 import android.util.Log
-import android.view.Menu
 import android.view.View
 import android.widget.CursorAdapter
-import androidx.cursoradapter.widget.SimpleCursorAdapter
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
+import androidx.cursoradapter.widget.SimpleCursorAdapter
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.finalprojectgigih.RetrofitInstance.api
+import com.example.finalprojectgigih.ViewModel.MainViewModel
+import com.example.finalprojectgigih.adapter.DisasterReportAdapter
+import com.example.finalprojectgigih.api.RetrofitInstance.api
 import com.example.finalprojectgigih.databinding.ActivityMainBinding
 import com.example.finalprojectgigih.databinding.ActivityMainBinding.inflate
+import com.example.finalprojectgigih.model.Disaster
+import com.example.finalprojectgigih.model.DisasterData
+import com.example.finalprojectgigih.model.WaterLevel
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -38,29 +53,57 @@ import retrofit2.Response
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var binding: ActivityMainBinding
     private lateinit var mMap: GoogleMap
-    private lateinit var disasterReportAdaper: DisasterReportAdapter
-
     private lateinit var listDisaster: ArrayList<Disaster>
+    private lateinit var listWaterLevel: ArrayList<WaterLevel>
+    private lateinit var viewModel: MainViewModel
+
+    lateinit var notificationManager: NotificationManager
+    lateinit var notificationChannel: NotificationChannel
+    lateinit var builder: Notification.Builder
+    private val channelId = "i.apps.notifications"
+    private val description = "Flood Level Notification"
+    private val filter = MutableLiveData<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = inflate(layoutInflater)
         val view = binding.root
         setContentView(view)
-        val sharedPreferences = getSharedPreferences("nightMode", Context.MODE_PRIVATE)
-        val savedNightMode = sharedPreferences.getBoolean("nightModeState",false)
+
         listDisaster = ArrayList()
+        filter.value = "all"
+        setupTheme()
         setupSearchView()
-        initiateBottomSheet()
+        setupBottomSheet()
         setFilterButton()
-        val mapFragment = supportFragmentManager
-            .findFragmentById(R.id.map_container_view) as SupportMapFragment
-        mapFragment.getMapAsync(this)
+        setupMap()
+//        createNotificationChannel()
+
         binding.rvDisaster.layoutManager = LinearLayoutManager(this@MainActivity)
         binding.fabSetting.setOnClickListener { view ->
             val intent = Intent(this, SettingActivity::class.java)
             startActivity(intent)
         }
+
+    }
+
+    private val observerDisasterList = Observer<ArrayList<Disaster>> {
+        putDisasterOnMap(it)
+        binding.rvDisaster.adapter = DisasterReportAdapter(it)
+        listDisaster = it
+    }
+    private val observerLoading = Observer<Boolean> {
+        if (it) {
+            binding.progressBar.setVisibility(View.VISIBLE)
+        } else {
+            binding.progressBar.setVisibility(View.GONE)
+        }
+    }
+
+    fun setupMap() {
+        val mapFragment = supportFragmentManager
+            .findFragmentById(R.id.map_container_view) as SupportMapFragment
+        mapFragment.getMapAsync(this)
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -69,7 +112,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         mMap.moveCamera(CameraUpdateFactory.newLatLng(jakarta))
         mMap.moveCamera(CameraUpdateFactory.zoomTo(10f))
         mMap.uiSettings.setZoomControlsEnabled(true)
-        getData()
+        viewModel = ViewModelProvider(this).get(MainViewModel::class.java)
+        viewModel.getData()
+        viewModel.disasterList.observe(this, observerDisasterList)
+        viewModel.stateLoading.observe(this, observerLoading)
+//        getData()
     }
 
     fun putDisasterOnMap(listDisaster: ArrayList<Disaster>) {
@@ -138,6 +185,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             Pair("Sulawesi Barat", "ID-SR"),
             Pair("Sumatera Barat", "ID-SB"),
         )
+
         binding.searchView.suggestionsAdapter = cursorAdapter
         binding.searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
@@ -227,7 +275,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                                     geo.properties.tags.instance_region_code
                                 )
                             )
-                            Log.d("testData", "onResponse: " + geo.coordinates)
                         }
 
                         putDisasterOnMap(listDisaster)
@@ -244,7 +291,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         })
     }
 
-    fun initiateBottomSheet() {
+    fun setupBottomSheet() {
         val bottomSheetBehavior = BottomSheetBehavior.from(binding.standardBottomSheet)
         bottomSheetBehavior.apply {
             peekHeight = 100
@@ -282,9 +329,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         mMap.moveCamera(
             CameraUpdateFactory.newLatLng(
                 LatLng(
-                    disasterListFiltered.get(0).coordinate.get(
-                        1
-                    ), disasterListFiltered.get(0).coordinate.get(0)
+                    disasterListFiltered.get(0).coordinate.get(1),
+                    disasterListFiltered.get(0).coordinate.get(0)
                 )
             )
         )
@@ -297,6 +343,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnSearchFlood.setOnClickListener {
             val filterOn = onCustomRadioButtonClick(it)
             if (filterOn) {
+                filter.value = "flood"
                 getFilteredbyDisasterData("flood")
             } else {
                 getData()
@@ -305,6 +352,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnSearchHaze.setOnClickListener {
             val filterOn = onCustomRadioButtonClick(it)
             if (filterOn) {
+                filter.value = "haze"
                 getFilteredbyDisasterData("haze")
             } else {
                 getData()
@@ -313,6 +361,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnSearchWind.setOnClickListener {
             val filterOn = onCustomRadioButtonClick(it)
             if (filterOn) {
+                filter.value = "wind"
                 getFilteredbyDisasterData("wind")
             } else {
                 getData()
@@ -321,6 +370,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnSearchEarthquake.setOnClickListener {
             val filterOn = onCustomRadioButtonClick(it)
             if (filterOn) {
+                filter.value = "earthquake"
                 getFilteredbyDisasterData("earthquake")
             } else {
                 getData()
@@ -329,6 +379,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnSearchFire.setOnClickListener {
             val filterOn = onCustomRadioButtonClick(it)
             if (filterOn) {
+                filter.value = "fire"
                 getFilteredbyDisasterData("fire")
             } else {
                 getData()
@@ -337,6 +388,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnSearchVolcano.setOnClickListener {
             val filterOn = onCustomRadioButtonClick(it)
             if (filterOn) {
+                filter.value = "volcano"
                 getFilteredbyDisasterData("volcano")
             } else {
                 getData()
@@ -363,6 +415,83 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         return view.isSelected
     }
 
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationChannel =
+                NotificationChannel(channelId, description, NotificationManager.IMPORTANCE_HIGH)
+            notificationChannel.enableLights(true)
+            notificationChannel.lightColor = Color.GREEN
+            notificationChannel.enableVibration(false)
+            notificationManager.createNotificationChannel(notificationChannel)
+            builder = Notification.Builder(this, channelId)
+                .setSmallIcon(R.drawable.ic_baseline_warning_24)
+                .setLargeIcon(
+                    BitmapFactory.decodeResource(
+                        this.resources,
+                        R.drawable.ic_baseline_warning_24
+                    )
+                ).setContentTitle("Banjir Terdeteksi!")
+                .setStyle(Notification.BigTextStyle())
+                .setContentText("Jakarta, Level ketinggian 60cm")
 
+        } else {
+            builder = Notification.Builder(this)
+                .setSmallIcon(R.drawable.ic_baseline_warning_24)
+                .setLargeIcon(
+                    BitmapFactory.decodeResource(
+                        this.resources,
+                        R.drawable.ic_baseline_warning_24
+                    )
+                ).setContentTitle("Banjir Terdeteksi!")
+                .setContentText("Jakarta, Level ketinggian 60cm")
 
+        }
+        notificationManager.notify(1234, builder.build())
+
+    }
+
+    fun checkRecentWaterLevel(): ArrayList<String> {
+        var recentFloodLevel: ArrayList<String> = ArrayList()
+        val timePeriod: Long = 604800
+        val report = api.getDisasterReport(timePeriod)
+        report.enqueue(object : Callback<DisasterData?> {
+            override fun onResponse(call: Call<DisasterData?>, response: Response<DisasterData?>) {
+                if (response.isSuccessful) {
+                    val geometry = response.body()?.result?.objects?.output?.geometries
+                    if (geometry != null) {
+                        for (geo in geometry) {
+                            listWaterLevel.add(
+                                WaterLevel(
+                                    geo.properties.created_at,
+                                    geo.properties.report_data.flood_depth,
+                                    geo.properties.tags.instance_region_code
+                                )
+                            )
+                        }
+                        listWaterLevel.sortBy { it.postedDate }
+                        recentFloodLevel.add(listWaterLevel.get(0).floodLevel.toString())
+                        recentFloodLevel.add(listWaterLevel.get(0).region)
+
+                    }
+                }
+            }
+
+            override fun onFailure(call: Call<DisasterData?>, t: Throwable) {
+                Log.d(TAG, "onFailure: database faliure")
+            }
+        })
+        return recentFloodLevel
+    }
+
+    fun setupTheme() {
+        val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+        val state = sharedPreferences.getBoolean("theme_switch", false)
+        if (state) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+        }
+    }
 }

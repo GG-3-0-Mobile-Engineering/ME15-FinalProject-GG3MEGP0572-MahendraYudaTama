@@ -1,7 +1,7 @@
-package com.example.finalprojectgigih
+package com.example.finalprojectgigih.api
 
+import com.example.finalprojectgigih.model.DisasterData
 import retrofit2.Call
-import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Query
 

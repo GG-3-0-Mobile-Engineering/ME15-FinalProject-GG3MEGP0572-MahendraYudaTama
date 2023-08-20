@@ -1,13 +1,13 @@
-package com.example.finalprojectgigih
+package com.example.finalprojectgigih.adapter
 
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.recyclerview.widget.AsyncDifferConfig
-import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.example.finalprojectgigih.databinding.ItemDisasterReportBinding
+import com.example.finalprojectgigih.model.Disaster
+import com.example.finalprojectgigih.model.Geometry
 import com.squareup.picasso.Picasso
 
 class DisasterReportAdapter(private val data:List<Disaster>) :

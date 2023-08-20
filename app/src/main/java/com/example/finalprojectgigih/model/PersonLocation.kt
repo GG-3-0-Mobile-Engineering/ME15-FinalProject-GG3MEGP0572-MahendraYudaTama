@@ -1,4 +1,4 @@
-package com.example.finalprojectgigih
+package com.example.finalprojectgigih.model
 
 data class PersonLocation(
     val lat: Double,
